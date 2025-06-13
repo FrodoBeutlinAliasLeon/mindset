@@ -1,16 +1,15 @@
 use std::process::Command;
 
 fn main() {
-    // Lautstärke auf 100 % setzen
+    // Set volume to 100%
     Command::new("pactl")
         .args(["set-sink-volume", "@DEFAULT_SINK@", "100%"])
         .status()
         .expect("Fehler beim Setzen der Lautstärke");
 
-    // Sound abspielen (absolute Pfadangabe)
+    // Play sound
     Command::new("paplay")
         .arg("/home/leon/sound.wav")
         .status()
         .expect("Fehler beim Abspielen des Sounds");
 }
-
