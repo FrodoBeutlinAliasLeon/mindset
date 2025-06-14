@@ -9,7 +9,7 @@ fn main() {
 
     // Play sound
     Command::new("paplay")
-        .arg("/home/leon/sound.wav")
+        .arg("audio/sound.wav")
         .status()
         .expect("Fehler beim Abspielen des Sounds");
 }
