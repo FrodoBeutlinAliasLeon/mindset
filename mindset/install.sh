@@ -1,68 +1,78 @@
 #!/bin/bash
 
-# Check for root
-# if $EUID equals 0 its a root user. 
+# Only allow execution with sudo
 if [[ "$EUID" -ne 0 ]]; then
   echo "Please run with sudo"
   exit 1
 fi
 
-# Check for curl
+USER_HOME=$(eval echo "~$SUDO_USER")
+CARGO_BIN="$USER_HOME/.cargo/bin"
+XBINDSRC="$USER_HOME/.xbindkeysrc"
+
+# Install required packages
 if ! command -v curl &> /dev/null; then
-  echo "curl not found. Installing..."
+  echo "Installing curl..."
   apt install -y curl
 fi
 
-# Check for xbindkeys
-# &> /dev/null supresses every kind of stdio
 if ! command -v xbindkeys &> /dev/null; then
-  echo "xbindkeys not found. Intalling..."
+  echo "Installing xbindkeys..."
   apt update && apt install -y xbindkeys
 fi
 
-# pulseaudio-utils (für pactl)
 if ! command -v pactl &> /dev/null; then
-  echo "pactl not found. Installing pulseaudio-utils..."
+  echo "Installing pulseaudio-utils..."
   apt install -y pulseaudio-utils
 fi
 
-
-# Check for Rust
-# &> /dev/null supresses every kind of stdio
-if ! command -v cargo &> /dev/null; then
-  echo "Rust not found. Installing..."
-  curl https://sh.rustup.rs -sSf | sh -s -- -y
-  source $HOME/.cargo/env
-fi
-
-# build-essential
 if ! dpkg -s build-essential &> /dev/null; then
-  echo "build-essential not found. Installing..."
+  echo "Installing build-essential..."
   apt install -y build-essential
 fi
 
-# Build the Rust project
-echo "Building the rust programm..."
-cargo build --release
+# Check for Rust in user context
+if ! sudo -u "$SUDO_USER" "$CARGO_BIN/cargo" --version &> /dev/null; then
+  echo "Rust not found for user $SUDO_USER. Installing..."
+  sudo -u "$SUDO_USER" curl https://sh.rustup.rs -sSf | sudo -u "$SUDO_USER" sh -s -- -y
+fi
 
-# Copy Binary
+# Build Rust project
+echo "Building the Rust program as $SUDO_USER..."
+sudo -u "$SUDO_USER" env "PATH=$CARGO_BIN:$PATH" cargo build --release
+
+# Copy binary
 INSTALL_PATH="/usr/local/bin/mindset"
 cp target/release/mindset "$INSTALL_PATH"
 
-# Find keycode for F9
-KEYCODE=$(xbindkeys -k <<< $'\e[20~' 2>/dev/null | grep "c:" | awk '{print $3}')
-[ -z "$KEYCODE" ] && KEYCODE=75  # fallback to 75 (typical F9)
+# Add hotkeys to .xbindkeysrc if not already present
+mkdir -p "$USER_HOME"
 
-# Write .xbindkeysrc
-echo "Configure xbindkeys..."
-cat > /home/$SUDO_USER/.xbindkeysrc <<EOF
-"$INSTALL_PATH"
-    m:0x0 + c:$KEYCODE
-EOF
+# F9 = keycode 75
+if ! grep -q 'c:75' "$XBINDSRC" 2>/dev/null; then
+  echo '"/usr/local/bin/mindset"' >> "$XBINDSRC"
+  echo '    m:0x0 + c:75' >> "$XBINDSRC"
+fi
 
-# Start xbindkeys
-echo "Starting xbindkeys"
+# Mod4 + i = keycode 31
+if ! grep -q 'c:31' "$XBINDSRC" 2>/dev/null; then
+  echo '"/usr/local/bin/mindset"' >> "$XBINDSRC"
+  echo '    m:0x40 + c:31' >> "$XBINDSRC"
+fi
+
+# Change ownership of target files in case root touched them
+chown -R "$SUDO_USER:$SUDO_USER" ./target
+
+# Restart xbindkeys
+echo "Restarting xbindkeys..."
 pkill xbindkeys 2>/dev/null
 sudo -u "$SUDO_USER" xbindkeys
+echo ""
+echo "Start the hotkeys (no sudo):"
+echo ""
+echo "   pkill xbindkeys"
+echo "   xbindkeys"
+echo ""
 
-echo "Everything is ready. Programm will run on F9"
+
+echo "✅ Installation complete. Mindset button is now bound to F9."
